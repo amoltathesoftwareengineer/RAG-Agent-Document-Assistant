@@ -1,8 +1,8 @@
 
 import streamlit as st
-from pypdf import PdfReader
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+
+from src.document_loader import load_pdf
+from src.rag_pipeline import answer_question
 
 st.set_page_config(
     page_title="RAG Agent Document Assistant",
@@ -16,32 +16,24 @@ st.write("Upload a PDF and ask questions about its content.")
 uploaded_file = st.file_uploader("Upload a PDF document", type=["pdf"])
 
 if uploaded_file:
-    reader = PdfReader(uploaded_file)
-    pages = [page.extract_text() or "" for page in reader.pages]
-    text = "\n".join(pages)
+    try:
+        pages = load_pdf(uploaded_file)
+        document_text = "\n".join(page["text"] for page in pages)
 
-    chunks = [
-        text[i:i + 800]
-        for i in range(0, len(text), 600)
-        if text[i:i + 800].strip()
-    ]
+        if document_text.strip():
+            st.success(f"PDF loaded: {len(pages)} pages")
 
-    st.success(f"PDF loaded successfully: {len(pages)} pages")
+            question = st.text_input("Ask a question about your document")
 
-    question = st.text_input("Ask a question about your document")
+            if question:
+                result = answer_question(document_text, question)
+                st.subheader("Relevant Context")
+                st.write(result)
+                st.caption(
+                    "This shows retrieved document text, not an AI-generated answer."
+                )
+        else:
+            st.warning("No readable text found in this PDF.")
 
-    if question and chunks:
-        vectorizer = TfidfVectorizer()
-        matrix = vectorizer.fit_transform(chunks + [question])
-        scores = cosine_similarity(matrix[-1], matrix[:-1]).flatten()
-        best_index = scores.argmax()
-
-        st.subheader("Retrieved Context")
-        st.write(chunks[best_index])
-
-        st.caption(
-            "This is a relevant text passage, not an AI-generated answer."
-        )
-
-    elif question and not chunks:
-        st.warning("No readable text found in this PDF.")
+    except Exception as error:
+        st.error(f"Could not process the PDF: {error}")
